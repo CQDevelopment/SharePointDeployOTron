@@ -10,10 +10,11 @@
     {
         public static void Process(string source)
         {
-            Console.WriteLine("Deployment starting.");
+            var stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Start();
 
+            Console.WriteLine("[{0}] Deployment starting.", DateTime.Now);
             
-
             var url = ConfigurationManager.AppSettings["Url"];
             var user = ConfigurationManager.AppSettings["User"];
             var password = ConfigurationManager.AppSettings["Password"];
@@ -55,13 +56,14 @@
 
             foreach (var sourceFilePath in outFolder)
             {
+                Console.WriteLine(sourceFilePath);
+
                 var sourceStream = System.IO.File.OpenRead(sourceFilePath);
 
                 var file = assetsListFolder.Files.Add(
                     new FileCreationInformation
                     {
                         ContentStream = sourceStream,
-                        //Content = System.IO.File.ReadAllBytes(sourceFilePath),
                         Url = new FileInfo(sourceFilePath).Name,
                         Overwrite = true
                     });
@@ -107,6 +109,8 @@
 
             foreach (var sourceFilePath in srcFolder)
             {
+                Console.WriteLine(sourceFilePath);
+
                 if (sourceFilePath.EndsWith(".master", StringComparison.InvariantCultureIgnoreCase))
                 {
                     var file = masterPageFolder.Files.Add(
@@ -145,7 +149,10 @@
             rootClient.Dispose();
             rootClient = null;
 
-            Console.WriteLine("Deployment complete.");
+            stopwatch.Stop();
+
+            Console.WriteLine("[{0}] Deployment complete.", DateTime.Now);
+            Console.WriteLine(stopwatch.Elapsed);
         }
     }
 }
