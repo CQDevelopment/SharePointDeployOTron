@@ -14,7 +14,7 @@
             stopwatch.Start();
 
             Console.WriteLine("[{0}] Deployment starting.", DateTime.Now);
-            
+
             var url = ConfigurationManager.AppSettings["Url"];
             var user = ConfigurationManager.AppSettings["User"];
             var password = ConfigurationManager.AppSettings["Password"];
@@ -109,41 +109,43 @@
 
             foreach (var sourceFilePath in srcFolder)
             {
+                if (!sourceFilePath.EndsWith(".master", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    continue;
+                }
+
                 Console.WriteLine(sourceFilePath);
 
-                if (sourceFilePath.EndsWith(".master", StringComparison.InvariantCultureIgnoreCase))
+                var file = masterPageFolder.Files.Add(
+                    new FileCreationInformation
+                    {
+                        Content = System.IO.File.ReadAllBytes(sourceFilePath),
+                        Url = new FileInfo(sourceFilePath).Name,
+                        Overwrite = true
+                    });
+
+                rootClient.ExecuteQuery();
+
+                try
                 {
-                    var file = masterPageFolder.Files.Add(
-                        new FileCreationInformation
-                        {
-                            Content = System.IO.File.ReadAllBytes(sourceFilePath),
-                            Url = new FileInfo(sourceFilePath).Name,
-                            Overwrite = true
-                        });
-
+                    file.CheckIn(string.Empty, CheckinType.MajorCheckIn);
                     rootClient.ExecuteQuery();
-
-                    try
-                    {
-                        file.CheckIn(string.Empty, CheckinType.MajorCheckIn);
-                        rootClient.ExecuteQuery();
-                    }
-                    catch { }
-
-                    try
-                    {
-                        file.Publish(string.Empty);
-                        rootClient.ExecuteQuery();
-                    }
-                    catch { }
-
-                    try
-                    {
-                        file.Approve(string.Empty);
-                        rootClient.ExecuteQuery();
-                    }
-                    catch { }
                 }
+                catch { }
+
+                try
+                {
+                    file.Publish(string.Empty);
+                    rootClient.ExecuteQuery();
+                }
+                catch { }
+
+                try
+                {
+                    file.Approve(string.Empty);
+                    rootClient.ExecuteQuery();
+                }
+                catch { }
             }
 
             rootClient.Dispose();
