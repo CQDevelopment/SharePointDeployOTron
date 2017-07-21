@@ -2,159 +2,123 @@
 {
     using Microsoft.SharePoint.Client;
     using System;
-    using System.Configuration;
     using System.IO;
     using System.Linq;
 
     public class Processor
     {
-        public static void Process(string source)
+        public IProcessor Provider { get; }
+        public ClientContext Context { get; }
+        public Folder RootFolder { get; }
+
+        public Processor(IProcessor provider)
         {
-            var stopwatch = new System.Diagnostics.Stopwatch();
-            stopwatch.Start();
-
-            Console.WriteLine("[{0}] Deployment starting.", DateTime.Now);
-
-            var url = ConfigurationManager.AppSettings["Url"];
-            var user = ConfigurationManager.AppSettings["User"];
-            var password = ConfigurationManager.AppSettings["Password"];
+            this.Provider = provider;
 
             var securePassword = new System.Security.SecureString();
-            Array.ForEach(password.ToCharArray(), (character) => { securePassword.AppendChar(character); });
+            Array.ForEach(this.Provider.Password.ToCharArray(), (character) => { securePassword.AppendChar(character); });
 
-            var credentials = new SharePointOnlineCredentials(user, securePassword);
+            var credentials = new SharePointOnlineCredentials(this.Provider.User, securePassword);
+
+            this.Context = new ClientContext(this.Provider.TargetWeb)
+            {
+                Credentials = credentials
+            };
 
 
-            var cthClient = new ClientContext(url + "/sites/contenttypehub");
-            cthClient.Credentials = credentials;
+            var allLists = this.Context.Web.Lists;
+            this.Context.Load(allLists);
+            this.Context.ExecuteQuery();
 
-
-
-            var cthLists = cthClient.Web.Lists;
-            cthClient.Load(cthLists);
-            cthClient.ExecuteQuery();
-
-            var assetsList = cthLists.SingleOrDefault(
+            var assetsList = allLists.SingleOrDefault(
                 (list) =>
-                    list.Title.Equals("assets", StringComparison.InvariantCultureIgnoreCase));
+                    list.Title.Equals(this.Provider.TargetLibrary, StringComparison.InvariantCultureIgnoreCase));
 
             if (assetsList == default(List))
             {
-                assetsList = cthClient.Web.Lists.Add(
+                assetsList = this.Context.Web.Lists.Add(
                     new ListCreationInformation
                     {
-                        Title = "Assets",
+                        Title = this.Provider.TargetLibrary,
                         TemplateType = (int)ListTemplateType.DocumentLibrary,
-                        Url = "assets"
+                        Url = this.Provider.TargetLibrary
                     });
 
-                cthClient.ExecuteQuery();
+                this.Context.ExecuteQuery();
             }
 
-            var assetsListFolder = assetsList.RootFolder;
-            var outFolder = Directory.GetFiles(source + @"\out");
+            this.RootFolder = assetsList.RootFolder;
+        }
 
-            foreach (var sourceFilePath in outFolder)
+        public void Process(string filePath)
+        {
+            this.Process(filePath, default(FileInfo));
+        }
+
+        public void Process(string filePath, FileInfo fileInfo)
+        {
+            if (fileInfo == default(FileInfo))
             {
-                Console.WriteLine(sourceFilePath);
-
-                var sourceStream = System.IO.File.OpenRead(sourceFilePath);
-
-                var file = assetsListFolder.Files.Add(
-                    new FileCreationInformation
-                    {
-                        ContentStream = sourceStream,
-                        Url = new FileInfo(sourceFilePath).Name,
-                        Overwrite = true
-                    });
-
-                cthClient.ExecuteQuery();
-
-                sourceStream.Dispose();
-
-                try
-                {
-                    file.CheckIn(string.Empty, CheckinType.MajorCheckIn);
-                    cthClient.ExecuteQuery();
-                }
-                catch { }
-
-                try
-                {
-                    file.Publish(string.Empty);
-                    cthClient.ExecuteQuery();
-                }
-                catch { }
-
-                try
-                {
-                    file.Approve(string.Empty);
-                    cthClient.ExecuteQuery();
-                }
-                catch { }
+                fileInfo = new FileInfo(filePath);
             }
 
-            cthClient.Dispose();
-            cthClient = null;
+            Console.Write("[{0}] {1}", DateTime.Now, fileInfo.Name);
 
-            var rootClient = new ClientContext(url);
-            rootClient.Credentials = credentials;
+            var sourceStream = default(FileStream);
 
-            var masterPageList = rootClient.Web.Lists.GetByTitle("Master Page Gallery");
-            rootClient.Load(masterPageList);
-            rootClient.ExecuteQuery();
-
-            var masterPageFolder = masterPageList.RootFolder;
-            var srcFolder = Directory.GetFiles(source + @"\src");
-
-            foreach (var sourceFilePath in srcFolder)
+            while (sourceStream == default(FileStream))
             {
-                if (!sourceFilePath.EndsWith(".master", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    continue;
-                }
-
-                Console.WriteLine(sourceFilePath);
-
-                var file = masterPageFolder.Files.Add(
-                    new FileCreationInformation
-                    {
-                        Content = System.IO.File.ReadAllBytes(sourceFilePath),
-                        Url = new FileInfo(sourceFilePath).Name,
-                        Overwrite = true
-                    });
-
-                rootClient.ExecuteQuery();
-
                 try
                 {
-                    file.CheckIn(string.Empty, CheckinType.MajorCheckIn);
-                    rootClient.ExecuteQuery();
+                    sourceStream = System.IO.File.OpenRead(filePath);
                 }
-                catch { }
-
-                try
+                catch
                 {
-                    file.Publish(string.Empty);
-                    rootClient.ExecuteQuery();
+                    Console.Write(".");
+                    System.Threading.Thread.Sleep(100);
                 }
-                catch { }
-
-                try
-                {
-                    file.Approve(string.Empty);
-                    rootClient.ExecuteQuery();
-                }
-                catch { }
             }
 
-            rootClient.Dispose();
-            rootClient = null;
+            var stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Start();
+
+            var file = this.RootFolder.Files.Add(
+                new FileCreationInformation
+                {
+                    ContentStream = sourceStream,
+                    Url = fileInfo.Name,
+                    Overwrite = true
+                });
+
+            this.Context.ExecuteQuery();
+
+            sourceStream.Dispose();
+            sourceStream = null;
+
+            try
+            {
+                file.CheckIn(string.Empty, CheckinType.MajorCheckIn);
+                this.Context.ExecuteQuery();
+            }
+            catch { }
+
+            try
+            {
+                file.Publish(string.Empty);
+                this.Context.ExecuteQuery();
+            }
+            catch { }
+
+            try
+            {
+                file.Approve(string.Empty);
+                this.Context.ExecuteQuery();
+            }
+            catch { }
 
             stopwatch.Stop();
 
-            Console.WriteLine("[{0}] Deployment complete.", DateTime.Now);
-            Console.WriteLine(stopwatch.Elapsed);
+            Console.WriteLine(" {0:0.00}s", stopwatch.Elapsed.TotalSeconds);
         }
     }
 }

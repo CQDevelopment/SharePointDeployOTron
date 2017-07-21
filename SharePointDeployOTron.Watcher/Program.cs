@@ -8,24 +8,45 @@
     {
         public static void Main(string[] args)
         {
-            var source = args.Length != 1 ? @"C:\Users\AJ\Google Drive\Source\SharePointCiTest" : args[0];
-            var outFolder = source + @"\out";
+            var sourceFolder = System.Configuration.ConfigurationManager.AppSettings["SourceFolder"];
+            var processor = new Logic.Processor(Logic.ProcessorProvider.GetDefault());
 
-            var lastRun = DateTime.MinValue;
+            var fileMonitor = new System.Collections.Generic.Dictionary<string, DateTime>();
 
             while (true)
             {
-                var outFiles = Directory.GetFiles(outFolder);
-                var fileInfo = new FileInfo(outFiles[0]);
+                var outFiles = Directory.GetFiles(sourceFolder);
 
-                if (fileInfo.LastWriteTimeUtc > lastRun)
+                foreach (var filePath in outFiles)
                 {
-                    lastRun = fileInfo.LastWriteTimeUtc;
+                    var fileInfo = new FileInfo(filePath);
+                    var fileName = fileInfo.Name;
+                    var fileUpdated = fileInfo.LastWriteTime;
 
-                    Logic.Processor.Process(source);
+                    if (!fileMonitor.ContainsKey(fileName))
+                    {
+                        fileMonitor[fileName] = DateTime.MinValue;
+                    }
+
+                    if (fileMonitor[fileName] < fileUpdated)
+                    {
+                        try
+                        {
+                            var sourceStream = System.IO.File.OpenRead(filePath);
+                            sourceStream.Dispose();
+                            sourceStream = null;
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+
+                        processor.Process(filePath);
+                        fileMonitor[fileName] = fileUpdated;
+                    }
                 }
 
-                Thread.Sleep(1000);
+                Thread.Sleep(100);
             }
         }
     }

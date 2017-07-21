@@ -4,9 +4,15 @@
     {
         public static void Main(string[] args)
         {
-            var source = args.Length != 1 ? @"C:\Users\AJ\Google Drive\Source\SharePointCiTest" : args[0];
+            var sourceFolder = System.Configuration.ConfigurationManager.AppSettings["SourceFolder"];
+            var processor = new Logic.Processor(Logic.ProcessorProvider.GetDefault());
 
-            Logic.Processor.Process(source);
+            var sourceFiles = System.IO.Directory.GetFiles(sourceFolder);
+            
+            foreach (var filePath in sourceFiles)
+            {
+                processor.Process(filePath);
+            }
         }
     }
 }
